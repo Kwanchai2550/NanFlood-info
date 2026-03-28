@@ -358,9 +358,9 @@
 
     <nav>
         <div class="nav-link active" onclick="showPage('page1')">1. การจำลองน้ำท่วมจากพายุวิภา ปี 2568</div>
-        <div class="nav-link" onclick="showPage('page2')">2. แผนที่ความเสี่ยง & ฉากทัศน์น้ำท่วม</div>
-        <div class="nav-link" onclick="showPage('page4')">3. วิเคราะห์ระดับน้ำ N.1</div>
-        <div class="nav-link" onclick="showPage('page5')">4. ความเสียหาย (อาคาร)</div>
+        <div class="nav-link" onclick="showPage('page5')">2. การประเมินความเสียหายของอาคารเบื้องต้น กรณีน้ำท่วมจากพายุวิภา ปี 2568</div>
+        <div class="nav-link" onclick="showPage('page2')">3. แผนที่ความเสี่ยง & ฉากทัศน์น้ำท่วม</div>
+        <div class="nav-link" onclick="showPage('page4')">4. วิเคราะห์ระดับน้ำ N.1</div>
     </nav>
 
 <section id="page1" class="page-content active">
@@ -650,11 +650,64 @@
         </div>
     </section>
     
-    <section id="page5" class="page-content">
-        <div class="main-view">
-            <div id="map-building" class="leaflet-map-container"></div>
+<section id="page5" class="page-content">
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside class="sidebar">
+        <h3>🏠 การประเมินความเสียหายอาคารเบื้องต้น</h3>
+
+        <!-- FILTER -->
+        <div class="control-group">
+            <span class="label">🎛️ Filter ความเสียหาย</span>
+
+            <label><input type="checkbox" value="รุนแรงน้อยมาก" checked> รุนแรงน้อยมาก</label><br>
+            <label><input type="checkbox" value="รุนแรงน้อย" checked> รุนแรงน้อย</label><br>
+            <label><input type="checkbox" value="รุนแรงปานกลาง" checked> รุนแรงปานกลาง</label><br>
+            <label><input type="checkbox" value="รุนแรง" checked> รุนแรง</label><br>
+            <label><input type="checkbox" value="รุนแรงมาก" checked> รุนแรงมาก</label>
         </div>
-    </section>
+
+        <!-- SUMMARY -->
+        <div class="control-group">
+            <span class="label">📊 สรุปความเสียหายอาคารเบื้องต้น</span>
+            <div id="damage-summary"></div>
+        </div>
+
+        <!-- CHART -->
+        <div class="control-group" style="height:200px;">
+            <canvas id="damageChart"></canvas>
+        </div>
+
+        <!-- LEGEND -->
+        <div class="control-group">
+            <span class="label">สัญลักษณ์</span>
+            <div>🟢 รุนแรงน้อยมาก (&lt;0.3 m)</div>
+            <div>🟡 รุนแรงน้อย (0.3–1.0 m)</div>
+            <div>🟠 รุนแรงปานกลาง (1.0–1.5 m)</div>
+            <div>🔴 รุนแรง (1.5–3.0 m)</div>
+            <div>🟥 รุนแรงมาก (&gt;3.0 m)</div>
+        </div>
+    </aside>
+
+    <!-- ===== MAIN VIEW ===== -->
+    <div class="main-view">
+        <div id="map-building" class="leaflet-map-container"></div>
+    </div>
+
+    <!-- WARNING BANNER -->
+    <div id="warning-banner" style="
+        position:absolute;
+        top:10px;
+        left:50%;
+        transform:translateX(-50%);
+        padding:10px 20px;
+        color:white;
+        font-weight:bold;
+        border-radius:6px;
+        z-index:1000;
+    "></div>
+
+</section>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
@@ -716,7 +769,7 @@
 
         function initMap2() {
             var bases = getBaseLayers();
-            map2 = L.map('map-merged', { layers: [bases["ดาวเทียม (Google)"]] }).setView([18.783, 100.775], 15);
+            map2 = L.map('map-merged', { layers: [bases["แผนที่ถนน (OSM)"]] }).setView([18.783, 100.775], 15);
             L.control.layers(bases).addTo(map2);
             updateMap2('rp', '010');
         }
@@ -859,7 +912,7 @@
 
         function initMap4() {
             var bases = getBaseLayers();
-            map4 = L.map('map-calc', { layers: [bases["ดาวเทียม (Google)"]] }).setView([18.783, 100.775], 15);
+            map4 = L.map('map-calc', { layers: [bases["แผนที่ถนน (OSM)"]] }).setView([18.783, 100.775], 15);
             L.control.layers(bases).addTo(map4);
             pointLayer = L.layerGroup().addTo(map4);
             calculateFlood();
@@ -926,38 +979,7 @@
               document.getElementById('flooded-points-300').innerText = floodCount300;
         }
         
-        function initMap5() {
-            var bases = getBaseLayers();
 
-            map5 = L.map('map-building', {
-                layers: [bases["ดาวเทียม (Google)"]]
-            }).setView([18.783, 100.775], 16);
-
-            L.control.layers(bases).addTo(map5);
-
-            // โหลด GeoJSON อาคาร
-            fetch('Nan_Building.geojson')
-                .then(res => res.json())
-                .then(data => {
-                    buildingLayer = L.geoJSON(data, {
-                        style: {
-                            color: "#ff7800",
-                            weight: 1,
-                            fillOpacity: 0.5
-                        },
-                        onEachFeature: function (feature, layer) {
-                            if (feature.properties) {
-                                layer.bindPopup(
-                                    "<b>Building</b><br>" +
-                                    JSON.stringify(feature.properties)
-                                );
-                            }
-                        }
-                    }).addTo(map5);
-
-                    map5.fitBounds(buildingLayer.getBounds());
-                });
-        }
 
 var mapPage1 = null;
 var surveyLayer = null;
@@ -1004,7 +1026,7 @@ function initMapPage1() {
         <!-- .addTo(mapPage1); -->
     
     var bases = getBaseLayers();
-    mapPage1 = L.map('map-page1', { layers: [bases["ดาวเทียม (Google)"]] }).setView([18.783, 100.775], 15);
+    mapPage1 = L.map('map-page1', { layers: [bases["แผนที่ถนน (OSM)"]] }).setView([18.783, 100.775], 15);
     L.control.layers(bases).addTo(mapPage1);
 
     L.imageOverlay('Sim_Flood_Nan_All_Max.png', imageBounds, {
@@ -1188,6 +1210,182 @@ options: {
         }
     });
 }
+
+
+
+var map5, buildingLayer, damageChart;
+var allFeatures = [];
+
+// ===== CLASSIFICATION =====
+function getSeverity(d) {
+    if (d < 0.3) return "รุนแรงน้อยมาก";
+    if (d < 1.0) return "รุนแรงน้อย";
+    if (d < 1.5) return "รุนแรงปานกลาง";
+    if (d < 3.0) return "รุนแรง";
+    return "รุนแรงมาก";
+}
+
+function getColor5(s) {
+    return {
+        "รุนแรงน้อยมาก": "#00ff00",
+        "รุนแรงน้อย": "#ffff00",
+        "รุนแรงปานกลาง": "#ffa500",
+        "รุนแรง": "#ff0000",
+        "รุนแรงมาก": "#8b0000"
+    }[s];
+}
+
+
+        function initMap5() {
+            var bases = getBaseLayers();
+
+            map5 = L.map('map-building', {
+                layers: [bases["แผนที่ถนน (OSM)"]]
+            }).setView([18.783, 100.775], 16);
+
+            L.control.layers(bases).addTo(map5);
+
+            // GeoJSON อาคาร
+    fetch('Nan_Building_Damage.geojson')
+        .then(res => res.json())
+        .then(data => {
+            allFeatures = data.features;
+            drawBuildings();
+        });
+        }
+
+
+// ===== DRAW =====
+function drawBuildings() {
+
+    if (buildingLayer) map5.removeLayer(buildingLayer);
+
+    let selected = Array.from(
+        document.querySelectorAll('#page5 input[type=checkbox]:checked')
+    ).map(el => el.value);
+
+    let summary = {
+        "รุนแรงน้อยมาก": 0,
+        "รุนแรงน้อย": 0,
+        "รุนแรงปานกลาง": 0,
+        "รุนแรง": 0,
+        "รุนแรงมาก": 0
+    };
+
+    buildingLayer = L.geoJSON(allFeatures, {
+
+        filter: function(f) {
+            let s = getSeverity(f.properties._max || 0);
+            return selected.includes(s);
+        },
+
+        style: function(f) {
+            let d = f.properties._max || 0;
+            let s = getSeverity(d);
+
+            summary[s]++;
+
+            return {
+                color: "#222",
+                weight: 0.5,
+                fillColor: getColor5(s),
+                fillOpacity: 0.8
+            };
+        },
+
+        onEachFeature: function(f, layer) {
+            let d = f.properties._max || 0;
+            let s = getSeverity(d);
+
+            layer.bindPopup(`
+                Depth: ${d.toFixed(2)} m<br>
+                Severity: ${s}
+            `);
+        }
+
+    }).addTo(map5);
+
+    map5.fitBounds(buildingLayer.getBounds());
+
+    updateSummary(summary);
+    updateChart(summary);
+    <!-- updateKPI(summary); -->
+    <!-- updateWarning(summary); -->
+}
+
+// ===== SUMMARY =====
+function updateSummary(s) {
+    document.getElementById('damage-summary').innerHTML = `
+    🟢 รุนแรงน้อยมาก: ${s["รุนแรงน้อยมาก"]} อาคาร<br>
+    🟡 รุนแรงน้อย: ${s["รุนแรงน้อย"]} อาคาร<br>
+    🟠 รุนแรงปานกลาง: ${s["รุนแรงปานกลาง"]} อาคาร<br>
+    🔴 รุนแรง: ${s["รุนแรง"]} อาคาร<br>
+    🟥 รุนแรงมาก: ${s["รุนแรงมาก"]} อาคาร
+    `;
+}
+
+// ===== CHART =====
+function updateChart(s) {
+
+    let data = [
+        s["รุนแรงน้อยมาก"],
+        s["รุนแรงน้อย"],
+        s["รุนแรงปานกลาง"],
+        s["รุนแรง"],
+        s["รุนแรงมาก"]
+    ];
+
+    if (damageChart) {
+        damageChart.data.datasets[0].data = data;
+        damageChart.update();
+        return;
+    }
+
+    damageChart = new Chart(document.getElementById('damageChart'), {
+        type: 'bar',
+        data: {
+            labels: ['น้อยมาก','น้อย','ปานกลาง','รุนแรง','รุนแรงมาก'],
+            datasets: [{ label: 'Buildings', data: data }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+}
+
+// ===== KPI =====
+function updateKPI(s) {
+    let total = Object.values(s).reduce((a,b)=>a+b,0);
+
+    document.getElementById('kpi-box').innerHTML = `
+        อาคารทั้งหมด: ${total}<br>
+        🔴 รุนแรงมาก: ${s["รุนแรงมาก"]}
+    `;
+}
+
+// ===== WARNING =====
+function updateWarning(s) {
+
+    let level = "GREEN";
+    if (s["รุนแรงมาก"] > 100) level = "RED";
+    else if (s["รุนแรง"] > 100) level = "ORANGE";
+    else if (s["รุนแรงปานกลาง"] > 100) level = "YELLOW";
+
+    let color = {
+        GREEN: "#2ecc71",
+        YELLOW: "#f1c40f",
+        ORANGE: "#e67e22",
+        RED: "#8b0000"
+    }[level];
+
+    let el = document.getElementById('warning-banner');
+    el.style.background = color;
+    el.innerHTML = "🚨 WARNING LEVEL: " + level;
+}
+
+// ===== FILTER EVENT =====
+document.querySelectorAll('#page5 input[type=checkbox]')
+    .forEach(cb => cb.addEventListener('change', drawBuildings));
+
+
     </script>
 </body>
 </html>
