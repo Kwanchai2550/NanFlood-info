@@ -652,9 +652,15 @@
     
 <section id="page5" class="page-content">
 
-    <!-- ===== SIDEBAR ===== -->
+    <!-- SIDEBAR -->
     <aside class="sidebar">
         <h3>🏠 การประเมินความเสียหายอาคารเบื้องต้น</h3>
+
+        <!-- KPI -->
+        <!-- <div class="control-group"> -->
+            <!-- <!-- <span class="label">🚨 Key Indicators</span> -->
+            <!-- <div id="kpi-box"></div> -->
+        <!-- </div> -->
 
         <!-- FILTER -->
         <div class="control-group">
@@ -667,45 +673,52 @@
             <label><input type="checkbox" value="รุนแรงมาก" checked> รุนแรงมาก</label>
         </div>
 
+        <!-- COST INPUT -->
+        <div class="control-group">
+            <span class="label">💰 ราคาค่าก่อสร้าง (บาท/ตร.ม.)</span>
+            <input type="number" id="cost-per-m2" value="15000" style="width:100%;">
+        </div>
+
         <!-- SUMMARY -->
         <div class="control-group">
-            <span class="label">📊 สรุปความเสียหายอาคารเบื้องต้น</span>
+            <span class="label">📊 จำนวนอาคารที่ได้รับความเสียหาย</span>
             <div id="damage-summary"></div>
         </div>
 
-        <!-- CHART -->
-        <div class="control-group" style="height:200px;">
+        <!-- DAMAGE COST -->
+        <div class="control-group">
+            <span class="label">💸 มูลค่าความเสียหาย</span>
+            <div id="damage-cost-summary"></div>
+        </div>
+
+        <!-- CHART COUNT -->
+        <div class="control-group" style="height:180px;">
             <canvas id="damageChart"></canvas>
+        </div>
+
+        <!-- CHART COST -->
+        <div class="control-group" style="height:180px;">
+            <canvas id="damageCostChart"></canvas>
         </div>
 
         <!-- LEGEND -->
         <div class="control-group">
             <span class="label">สัญลักษณ์</span>
-            <div>🟢 รุนแรงน้อยมาก (&lt;0.3 m)</div>
-            <div>🟡 รุนแรงน้อย (0.3–1.0 m)</div>
-            <div>🟠 รุนแรงปานกลาง (1.0–1.5 m)</div>
-            <div>🔴 รุนแรง (1.5–3.0 m)</div>
-            <div>🟥 รุนแรงมาก (&gt;3.0 m)</div>
+            🟢 น้อยมาก (&lt;0.2)<br>
+            🟡 น้อย (0.2–0.5)<br>
+            🟠 ปานกลาง (0.5–1.0)<br>
+            🔴 รุนแรง (1–2)<br>
+            🟥 รุนแรงมาก (&gt;2)
         </div>
     </aside>
 
-    <!-- ===== MAIN VIEW ===== -->
+    <!-- MAP -->
     <div class="main-view">
         <div id="map-building" class="leaflet-map-container"></div>
     </div>
 
-    <!-- WARNING BANNER -->
-    <div id="warning-banner" style="
-        position:absolute;
-        top:10px;
-        left:50%;
-        transform:translateX(-50%);
-        padding:10px 20px;
-        color:white;
-        font-weight:bold;
-        border-radius:6px;
-        z-index:1000;
-    "></div>
+    <!-- WARNING -->
+    <div id="warning-banner"></div>
 
 </section>
 
@@ -1213,10 +1226,11 @@ options: {
 
 
 
-var map5, buildingLayer, damageChart;
+var map5, buildingLayer;
+var damageChart, damageCostChart;
 var allFeatures = [];
 
-// ===== CLASSIFICATION =====
+// ===== CLASS =====
 function getSeverity(d) {
     if (d < 0.3) return "รุนแรงน้อยมาก";
     if (d < 1.0) return "รุนแรงน้อย";
@@ -1235,8 +1249,19 @@ function getColor5(s) {
     }[s];
 }
 
+function getDamageRatio(s) {
+    return {
+        "รุนแรงน้อยมาก": 0.03,
+        "รุนแรงน้อย": 0.3,
+        "รุนแรงปานกลาง": 0.6,
+        "รุนแรง": 0.8,
+        "รุนแรงมาก": 1.0
+    }[s];
+}
 
-        function initMap5() {
+// ===== INIT =====
+function initMap5() {
+
             var bases = getBaseLayers();
 
             map5 = L.map('map-building', {
@@ -1245,17 +1270,15 @@ function getColor5(s) {
 
             L.control.layers(bases).addTo(map5);
 
-            // GeoJSON อาคาร
     fetch('Nan_Building_Damage.geojson')
         .then(res => res.json())
         .then(data => {
             allFeatures = data.features;
             drawBuildings();
         });
-        }
+}
 
-
-// ===== DRAW =====
+// ===== MAIN FUNCTION =====
 function drawBuildings() {
 
     if (buildingLayer) map5.removeLayer(buildingLayer);
@@ -1264,7 +1287,19 @@ function drawBuildings() {
         document.querySelectorAll('#page5 input[type=checkbox]:checked')
     ).map(el => el.value);
 
+    let costPerM2 = parseFloat(
+        document.getElementById('cost-per-m2').value || 0
+    );
+
     let summary = {
+        "รุนแรงน้อยมาก": 0,
+        "รุนแรงน้อย": 0,
+        "รุนแรงปานกลาง": 0,
+        "รุนแรง": 0,
+        "รุนแรงมาก": 0
+    };
+
+    let damageCost = {
         "รุนแรงน้อยมาก": 0,
         "รุนแรงน้อย": 0,
         "รุนแรงปานกลาง": 0,
@@ -1280,10 +1315,15 @@ function drawBuildings() {
         },
 
         style: function(f) {
+
             let d = f.properties._max || 0;
             let s = getSeverity(d);
+            let area = f.properties.area || 0;
 
             summary[s]++;
+
+            let cost = area * costPerM2 * getDamageRatio(s);
+            damageCost[s] += cost;
 
             return {
                 color: "#222",
@@ -1296,9 +1336,11 @@ function drawBuildings() {
         onEachFeature: function(f, layer) {
             let d = f.properties._max || 0;
             let s = getSeverity(d);
+            let area = f.properties.area || 0;
 
             layer.bindPopup(`
                 Depth: ${d.toFixed(2)} m<br>
+                Area: ${area.toFixed(1)} m²<br>
                 Severity: ${s}
             `);
         }
@@ -1308,32 +1350,40 @@ function drawBuildings() {
     map5.fitBounds(buildingLayer.getBounds());
 
     updateSummary(summary);
+    updateDamageCost(damageCost);
     updateChart(summary);
+    updateCostChart(damageCost);
     <!-- updateKPI(summary); -->
     <!-- updateWarning(summary); -->
 }
 
-// ===== SUMMARY =====
+// ===== UI UPDATE =====
 function updateSummary(s) {
     document.getElementById('damage-summary').innerHTML = `
-    🟢 รุนแรงน้อยมาก: ${s["รุนแรงน้อยมาก"]} อาคาร<br>
-    🟡 รุนแรงน้อย: ${s["รุนแรงน้อย"]} อาคาร<br>
-    🟠 รุนแรงปานกลาง: ${s["รุนแรงปานกลาง"]} อาคาร<br>
-    🔴 รุนแรง: ${s["รุนแรง"]} อาคาร<br>
-    🟥 รุนแรงมาก: ${s["รุนแรงมาก"]} อาคาร
+    🟢 รุนแรงน้อยมาก: ${s["รุนแรงน้อยมาก"]}<br>
+    🟡 รุนแรงน้อย: ${s["รุนแรงน้อย"]}<br>
+    🟠 รุนแรงปานกลาง: ${s["รุนแรงปานกลาง"]}<br>
+    🔴 รุนแรง: ${s["รุนแรง"]}<br>
+    🟥 รุนแรงมาก: ${s["รุนแรงมาก"]}
+    `;
+}
+
+function updateDamageCost(dc) {
+    let f = x => (x / 1e6).toLocaleString(undefined, {maximumFractionDigits: 2});
+
+    document.getElementById('damage-cost-summary').innerHTML = `
+    🟢 รุนแรงน้อยมาก: ${f(dc["รุนแรงน้อยมาก"])} ล้านบาท<br>
+    🟡 รุนแรงน้อย: ${f(dc["รุนแรงน้อย"])} ล้านบาท<br>
+    🟠 รุนแรงปานกลาง: ${f(dc["รุนแรงปานกลาง"])} ล้านบาท<br>
+    🔴 รุนแรง: ${f(dc["รุนแรง"])} ล้านบาท<br>
+    🟥 รุนแรงมาก: ${f(dc["รุนแรงมาก"])} ล้านบาท
     `;
 }
 
 // ===== CHART =====
 function updateChart(s) {
 
-    let data = [
-        s["รุนแรงน้อยมาก"],
-        s["รุนแรงน้อย"],
-        s["รุนแรงปานกลาง"],
-        s["รุนแรง"],
-        s["รุนแรงมาก"]
-    ];
+    let data = Object.values(s);
 
     if (damageChart) {
         damageChart.data.datasets[0].data = data;
@@ -1344,11 +1394,39 @@ function updateChart(s) {
     damageChart = new Chart(document.getElementById('damageChart'), {
         type: 'bar',
         data: {
-            labels: ['น้อยมาก','น้อย','ปานกลาง','รุนแรง','รุนแรงมาก'],
-            datasets: [{ label: 'Buildings', data: data }]
+            labels: ['น้อยมาก','น้อย','ปานกลาง','รุนแรง','มาก'],
+            datasets: [{ label: 'อาคาร', data: data }]
         },
         options: { responsive: true, maintainAspectRatio: false }
     });
+}
+
+function updateCostChart(dc) {
+
+    let data = Object.values(dc).map(v => v / 1e6);
+
+    if (damageCostChart) {
+        damageCostChart.data.datasets[0].data = data;
+        damageCostChart.update();
+        return;
+    }
+
+    damageCostChart = new Chart(document.getElementById('damageCostChart'), {
+        type: 'bar',
+        data: {
+            labels: ['น้อยมาก','น้อย','ปานกลาง','รุนแรง','มาก'],
+            datasets: [{ 
+                        label: 'มูลค่าความเสียหาย (ล้านบาท)', 
+                        data: data 
+                      }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+    let totalCost = Object.values(dc).reduce((a,b)=>a+b,0);
+
+document.getElementById('kpi-box').innerHTML += `
+<br>💰 ความเสียหายรวม: ${(totalCost/1e6).toLocaleString('th-TH',{maximumFractionDigits:2})} ล้านบาท
+`;
 }
 
 // ===== KPI =====
@@ -1381,10 +1459,12 @@ function updateWarning(s) {
     el.innerHTML = "🚨 WARNING LEVEL: " + level;
 }
 
-// ===== FILTER EVENT =====
+// ===== EVENTS =====
 document.querySelectorAll('#page5 input[type=checkbox]')
     .forEach(cb => cb.addEventListener('change', drawBuildings));
 
+document.getElementById('cost-per-m2')
+    .addEventListener('input', drawBuildings);
 
     </script>
 </body>
